@@ -104,7 +104,8 @@ async fn check_for_update(app: AppHandle, manual: bool) {
         Ok(Some(update)) => update,
         Ok(None) => {
             if manual {
-                dialog(&app, t("Mardow ist aktuell.".into(), "Mardow is up to date.".into()), ok()).await;
+                let v = app.package_info().version.to_string();
+                dialog(&app, t(format!("Mardow {v} ist aktuell."), format!("Mardow {v} is up to date.")), ok()).await;
             }
             return;
         }
