@@ -42,7 +42,7 @@ ditto -c -k --keepParent "$app" "$zip" # keeps the bundle's symlinks and permiss
 
 echo "→ commit, tag, push"
 git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
-git commit -m "Release $tag"
+git diff --cached --quiet || git commit -m "Release $tag" # nothing to commit when the version was already set
 git tag -a "$tag" -m "Mardow $version"
 git push origin HEAD "$tag"
 
