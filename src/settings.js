@@ -5,6 +5,8 @@
 // Field types: 'select' and 'segmented' (options: [value, label][]),
 // 'keys' (display only; keys: one or more key combos, e.g. [['⌥', '⌘', '↑'], ['⌥', '⌘', '↓']]).
 
+import { version } from '../package.json'; // release.sh bumps it together with the app version
+
 // Mac symbols in the list; other platforms (web version) see Ctrl/Alt/Shift.
 const isMac = navigator.platform.startsWith('Mac');
 const keyName = (k) => (isMac ? k : ({ '⌘': 'Ctrl', '⌥': 'Alt', '⇧': 'Shift', '⌫': 'Backspace' })[k] ?? k);
@@ -91,7 +93,7 @@ export function renderSettings({ t, cfg, active, esc }) {
     <div class="settings-body">
       <nav class="settings-nav">${all
         .map((s) => `<button class="${s.id === section.id ? 'active' : ''}" data-action="settings-section" data-section="${s.id}">${icons[s.id] ?? ''}<span>${esc(s.label)}</span></button>`)
-        .join('')}</nav>
+        .join('')}<div class="settings-version">Mardow ${esc(version)}</div></nav>
       <div class="settings-pane">
         <h3>${esc(section.label)}</h3>
         ${section.fields

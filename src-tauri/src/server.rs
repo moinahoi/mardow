@@ -329,6 +329,18 @@ async fn reveal_vault(State(s): St, Json(_): Json<Value>) -> R {
     ok()
 }
 
+/// Opens a link from a note (⌘-click) in the default browser or mail app. Only web and mail links,
+/// so a note can never make the system open a file or an app.
+async fn open_url(Json(body): Json<Value>) -> R {
+    let url = body["url"].as_str().unwrap_or("");
+    let lower = url.to_ascii_lowercase();
+    if !["https://", "http://", "mailto:"].iter().any(|p| lower.starts_with(p)) || url.chars().any(char::is_control) {
+        return Err(vault::bad("only web and mail links can be opened"));
+    }
+    std::process::Command::new("open").arg(url).spawn()?;
+    ok()
+}
+
 async fn tree(State(s): St) -> R<vault::Tree> {
     Ok(Json(vault::tree(&s.vault()?)?))
 }
@@ -486,6 +498,7 @@ pub async fn serve(
         .route("/api/pick-vault", post(pick_vault))
         .route("/api/reveal-vault", post(reveal_vault))
         .route("/api/forget-vault", post(forget_vault))
+        .route("/api/open-url", post(open_url))
         .route("/api/file", get(read_file).put(write_file))
         .route("/api/file/open", post(open_file))
         .route("/api/file/close", post(close_file))

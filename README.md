@@ -78,6 +78,7 @@ mardow: board
 - `->`, `-->` und `—>` werden beim Tippen zu →. ⌘Z macht das rückgängig.
 - `[] `, `[ ]` oder `[x]` am Zeilenanfang (auch nach `- `) macht einen Checklistenpunkt.
 - Ein Klick auf den Griff (sechs Punkte) links neben einer Zeile wandelt sie um: Text, Überschrift, Zitat, Liste, Checkliste oder Code. Der Text bleibt erhalten. Gedrückt halten und ziehen verschiebt die Zeile.
+- Eingefügte Webadressen (`https://…`, `www.…`) werden automatisch zu Links. ⌘-Klick öffnet einen Link im Standardbrowser, ein normaler Klick setzt nur den Cursor. Auch die Adresse im kleinen Link-Fenster über einem Link öffnet ihn.
 - Tabellen legst du über `/` › Erweitert › Tabelle an. Markdown-Tabellen aus Dateien werden als Tabelle angezeigt.
 
 ## Wie die Dateien aussehen

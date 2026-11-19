@@ -3,7 +3,6 @@ import { $prose, $inputRule } from '@milkdown/kit/utils';
 import { remarkStringifyOptionsCtx, editorViewOptionsCtx, editorViewCtx } from '@milkdown/kit/core';
 import { InputRule } from '@milkdown/kit/prose/inputrules';
 import { Plugin, PluginKey, TextSelection, AllSelection } from '@milkdown/kit/prose/state';
-import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
 import '@milkdown/crepe/theme/common/style.css';
 import '@milkdown/crepe/theme/frame.css';
 import '@fontsource/geist/latin-700.css'; // bundled for the sidebar's "Hello!" only
@@ -11,6 +10,7 @@ import { oneDark } from '@codemirror/theme-one-dark';
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
 import { dict, defaultLang } from './i18n.js';
 import { renderSettings } from './settings.js';
+import { findUrls, openable } from './links.js';
 import { newBoard, isBoard } from './board.js';
 import { slashIcons as si, toolbarIcons, listIcons, tableIcons, linkTooltipIcons, codeIcons } from './icons.js';
 import { createBoardView } from './boardview.js';
@@ -232,20 +232,49 @@ const taskList = $inputRule(() => new InputRule(/^\[(\s?|x|X)\]\s$/, (state, mat
 
 // Enter on a checked item splits it and the new item copies "checked"; a fresh empty item starts unchecked.
 // The growing doc tells a split apart from a click on the checkbox, which only changes the attribute.
-// List numbers sit outside the text, so the browser highlights them only between the selection's ends
-// (the "1." of a fully selected list stayed blank). Mark every list item the selection touches instead.
-const selectedItems = $prose(() => new Plugin({
+// URLs in pasted text become links, whatever the source (Milkdown's own paste handler skips
+// transformPasted, so this marks the paste and links the URLs in what it changed). ⌘-click opens a link
+// in the default browser; a plain click keeps placing the cursor for editing.
+const openUrl = (url) => api('POST', '/api/open-url', { url }).catch(toast);
+let pasting = false;
+const links = $prose(() => new Plugin({
   props: {
-    decorations({ doc, selection }) {
-      if (selection.empty) return null;
-      const marks = [];
-      doc.nodesBetween(selection.from, selection.to, (node, pos) => {
-        if (node.type.name === 'list_item') marks.push(Decoration.node(pos, pos + node.nodeSize, { class: 'sel-item' }));
-      });
-      return DecorationSet.create(doc, marks);
+    handleDOMEvents: {
+      paste() { pasting = true; setTimeout(() => (pasting = false)); return false; },
+      click(_view, e) {
+        const a = e.metaKey && e.target.closest?.('a[href]');
+        if (!a || !openable(a.getAttribute('href'))) return false;
+        e.preventDefault();
+        openUrl(a.getAttribute('href'));
+        return true;
+      },
     },
   },
+  appendTransaction(trs, old, state) {
+    if (!pasting || !trs.some((tr) => tr.docChanged)) return;
+    pasting = false;
+    const from = old.doc.content.findDiffStart(state.doc.content);
+    if (from == null) return;
+    const to = Math.max(from, old.doc.content.findDiffEnd(state.doc.content).b);
+    const link = state.schema.marks.link;
+    const tr = state.tr;
+    state.doc.nodesBetween(from, to, (node, pos, parent) => {
+      if (!node.isText || parent.type.spec.code || node.marks.some((m) => m.type === link || m.type.spec.code)) return;
+      for (const u of findUrls(node.text)) tr.addMark(pos + u.start, pos + u.end, link.create({ href: u.href }));
+    });
+    return tr.docChanged ? tr : null;
+  },
 }));
+// The address in Crepe's link tooltip is a target=_blank link, which the app window ignores: open it here.
+document.addEventListener('click', (e) => {
+  const a = e.target.closest?.('.milkdown-link-preview a.link-display');
+  if (!a || !openable(a.getAttribute('href'))) return;
+  e.preventDefault();
+  e.stopPropagation();
+  openUrl(a.getAttribute('href'));
+}, true);
+// The pointer over links while ⌘ is held shows they open.
+for (const type of ['keydown', 'keyup', 'blur']) window.addEventListener(type, (e) => document.body.classList.toggle('cmd-down', !!e.metaKey));
 
 const uncheckNewItem = $prose(() => new Plugin({
   appendTransaction(trs, old, state) {
@@ -326,7 +355,7 @@ function makeEditor(root, markdown, placeholder = t.editorPlaceholder) {
       },
     },
   });
-  c.editor.use(dropUnusedPlusLine).use(arrows).use(taskList).use(uncheckNewItem).use(selectedItems);
+  c.editor.use(dropUnusedPlusLine).use(arrows).use(taskList).use(uncheckNewItem).use(links);
   // Plain-text clipboard without Markdown syntax. A view prop, because those win over Milkdown's clipboard plugin.
   c.editor.config((ctx) => ctx.update(editorViewOptionsCtx, (o) => ({
     ...o,
