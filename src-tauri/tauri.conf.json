@@ -48,6 +48,15 @@
         "role": "Editor",
         "rank": "Alternate"
       }
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDBBQ0NFM0ZDMkRGODlGQ0MKUldUTW4vZ3QvT1BNQ3RzNjRmdlRqcE1hNTU2WmdvT0NUbUlKUFNQcVZOdlpMRFpyajN3ZUxzQjIK",
+      "endpoints": [
+        "https://github.com/moinahoi/mardow/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

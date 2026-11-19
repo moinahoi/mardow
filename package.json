@@ -9,7 +9,7 @@
     "dev": "vite",
     "server": "PATH=$HOME/.cargo/bin:$PATH cargo run --manifest-path src-tauri/Cargo.toml -- --web",
     "desktop": "PATH=$HOME/.cargo/bin:$PATH tauri dev",
-    "dist": "PATH=$HOME/.cargo/bin:$PATH tauri build",
+    "dist": "PATH=$HOME/.cargo/bin:$PATH TAURI_SIGNING_PRIVATE_KEY=${TAURI_SIGNING_PRIVATE_KEY:-$HOME/.tauri/mardow.key} TAURI_SIGNING_PRIVATE_KEY_PASSWORD=${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-} tauri build",
     "test": "PATH=$HOME/.cargo/bin:$PATH cargo test --manifest-path src-tauri/Cargo.toml && node src/board.test.js && node src/plaintext.test.js",
     "release": "bash scripts/release.sh"
   },

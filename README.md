@@ -102,15 +102,25 @@ Notizordner/
 npm run release -- 0.2.0
 ```
 
-[scripts/release.sh](scripts/release.sh) setzt die Version (package.json, tauri.conf.json, Cargo.toml), führt `npm test` und `npm run dist` aus und packt `Mardow.app` als `Mardow-<version>-macos-<arch>.zip`. Danach entstehen der Commit „Release v<version>“ und der Tag `v<version>`. Beide werden nach `origin` gepusht. Zum Schluss legt das Skript ein GitHub-Release an, mit der ZIP-Datei als Anhang und automatisch erzeugten Release-Notes.
+[scripts/release.sh](scripts/release.sh) setzt die Version (package.json, tauri.conf.json, Cargo.toml), führt `npm test` und `npm run dist` aus und packt `Mardow.app` als `Mardow-<version>-macos-<arch>.zip`. Danach entstehen der Commit „Release v<version>“ und der Tag `v<version>`. Beide werden nach `origin` gepusht. Zum Schluss legt das Skript ein GitHub-Release an, mit automatisch erzeugten Release-Notes und drei Anhängen: der ZIP-Datei, dem signierten Update-Archiv `Mardow-<version>-macos-<arch>.app.tar.gz` und `latest.json`.
 
-Voraussetzungen: ein sauberer Git-Arbeitsstand, ein `origin`-Remote auf GitHub und ein angemeldetes `gh` (`gh auth login`). Das Skript prüft alles vorher und bricht ab, bevor es eine Datei ändert.
+Voraussetzungen: ein sauberer Git-Arbeitsstand, ein `origin`-Remote auf GitHub, ein angemeldetes `gh` (`gh auth login`) und der Update-Schlüssel `~/.tauri/mardow.key`. Das Skript prüft alles vorher und bricht ab, bevor es eine Datei ändert.
 
 Die App ist nur behelfsmäßig signiert und nicht notarisiert. Auf einem anderen Mac blockiert Gatekeeper sie nach dem Download zunächst: Rechtsklick › Öffnen, oder `xattr -dr com.apple.quarantine Mardow.app`.
 
+## Updates
+
+Mardow prüft drei Sekunden nach dem Start, ob es auf GitHub ein neueres Release gibt. Von Hand geht das über das App-Menü › „Nach Updates suchen …“. Gibt es eins, fragt ein Dialog nach. Bei „Installieren“ speichert Mardow die offene Notiz, lädt das Update, ersetzt sich selbst und startet neu.
+
+- Die App liest `https://github.com/moinahoi/mardow/releases/latest/download/latest.json`. Deshalb muss das Repo öffentlich sein.
+- Jedes Update ist mit `~/.tauri/mardow.key` signiert. Die App prüft die Signatur gegen den öffentlichen Schlüssel in `tauri.conf.json` und installiert nichts ohne gültige Signatur.
+- **Den privaten Schlüssel sichern** (z. B. im Passwort-Manager) und nie committen. Ist er weg, bekommen installierte Versionen keine Updates mehr.
+- Entwicklungs-Builds (`npm run desktop`) prüfen beim Start nicht.
+- Versionen vor 0.2.0 haben keinen Updater: 0.2.0 einmal von Hand installieren.
+
 ## Neue Einstellung hinzufügen
 
-1. In `src/settings.js` ein Feld zu einem Bereich hinzufügen (oder einen neuen Bereich anlegen). Möglich sind die Typen `select`, `segmented`, `folder` und `keys` (nur Anzeige, für die Kürzel-Übersicht).
+1. In `src/settings.js` ein Feld zu einem Bereich hinzufügen (oder einen neuen Bereich anlegen). Möglich sind die Typen `select`, `segmented` und `keys` (nur Anzeige, für die Kürzel-Übersicht).
 2. Die Beschriftungen in `src/i18n.js` ergänzen.
 3. Den Wert im Code als `state.cfg.<key> ?? <default>` lesen.
 

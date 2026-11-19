@@ -8,7 +8,8 @@ mod vault;
 use std::path::PathBuf;
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, LogicalPosition, Manager, RunEvent, Runtime, TitleBarStyle, WebviewUrl, WebviewWindowBuilder};
-use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+use tauri_plugin_updater::UpdaterExt;
 
 fn osascript_picker() -> Option<PathBuf> {
     // Activate first, or the dialog of this background process can open behind all windows.
@@ -42,8 +43,10 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, de: bool) -> tauri::Result<Menu<R>
         ..Default::default()
     };
     let settings = MenuItem::with_id(app, "settings", l("Einstellungen …", "Settings…").unwrap(), true, Some("CmdOrCtrl+,"))?;
+    let updates = MenuItem::with_id(app, "updates", l("Nach Updates suchen …", "Check for Updates…").unwrap(), true, None::<&str>)?;
     let app_menu = Submenu::with_items(app, "Mardow", true, &[
         &PredefinedMenuItem::about(app, l("Über Mardow", "About Mardow"), Some(about))?,
+        &updates,
         &sep()?,
         &settings,
         &sep()?,
@@ -73,6 +76,68 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, de: bool) -> tauri::Result<Menu<R>
     Menu::with_items(app, &[&app_menu, &edit_menu, &window_menu])
 }
 
+/// A native message on the main window. `buttons` with two choices returns whether the first was picked.
+async fn dialog(app: &AppHandle, text: String, buttons: MessageDialogButtons) -> bool {
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut d = app.dialog().message(text).title("Mardow").buttons(buttons);
+        if let Some(win) = app.get_webview_window("main") {
+            d = d.parent(&win);
+        }
+        d.blocking_show()
+    })
+    .await
+    .unwrap_or(false)
+}
+
+/// Looks for a newer release (latest.json of the newest GitHub release, signature checked by the plugin)
+/// and offers to install it. `manual` (menu item) also reports "up to date" and errors.
+async fn check_for_update(app: AppHandle, manual: bool) {
+    let de = is_german(server::saved_lang().as_deref());
+    let t = |de_text: String, en_text: String| if de { de_text } else { en_text };
+    let ok = || MessageDialogButtons::Ok;
+    let found = match app.updater() {
+        Ok(updater) => updater.check().await,
+        Err(e) => Err(e),
+    };
+    let update = match found {
+        Ok(Some(update)) => update,
+        Ok(None) => {
+            if manual {
+                dialog(&app, t("Mardow ist aktuell.".into(), "Mardow is up to date.".into()), ok()).await;
+            }
+            return;
+        }
+        Err(e) => {
+            eprintln!("update check failed: {e}");
+            if manual {
+                dialog(&app, t(format!("Die Suche nach Updates ist fehlgeschlagen:\n{e}"), format!("Checking for updates failed:\n{e}")), ok()).await;
+            }
+            return;
+        }
+    };
+    let (new, old) = (&update.version, &update.current_version);
+    let question = t(
+        format!("Mardow {new} ist verfügbar (installiert: {old}).\nJetzt installieren? Mardow startet danach neu."),
+        format!("Mardow {new} is available (installed: {old}).\nInstall now? Mardow restarts afterwards."),
+    );
+    let buttons = MessageDialogButtons::OkCancelCustom(t("Installieren".into(), "Install".into()), t("Später".into(), "Later".into()));
+    if !dialog(&app, question, buttons).await {
+        return;
+    }
+    if let Err(e) = update.download_and_install(|_, _| {}, || {}).await {
+        dialog(&app, t(format!("Das Update ist fehlgeschlagen:\n{e}"), format!("The update failed:\n{e}")), ok()).await;
+        return;
+    }
+    // Save what's still in the editor's 400 ms debounce before the app goes away.
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.eval("window.mardowFlush && window.mardowFlush()");
+    }
+    // shortcut: eval can't await the save; 1 s covers a normal note write, raise it if large saves get cut off
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    app.restart();
+}
+
 fn main() {
     let repo_dist = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../dist"));
 
@@ -94,7 +159,11 @@ fn main() {
     let mut opened = Some(opened);
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .on_menu_event(|app, event| {
+            if event.id() == "updates" {
+                tauri::async_runtime::spawn(check_for_update(app.clone(), true));
+            }
             if event.id() == "settings" {
                 if let Some(win) = app.get_webview_window("main") {
                     let _ = win.eval("window.mardowOpenSettings && window.mardowOpenSettings()");
@@ -103,6 +172,14 @@ fn main() {
         })
         .setup(move |app| {
             app.set_menu(build_menu(app.handle(), is_german(server::saved_lang().as_deref()))?)?;
+            // Dev builds (`npm run desktop`) aren't a bundled app the updater could replace.
+            if !cfg!(debug_assertions) {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await; // let the window open first
+                    check_for_update(handle, false).await;
+                });
+            }
 
             // Bind before the window loads, so the first request can't race the server start.
             let listener = std::net::TcpListener::bind("127.0.0.1:0")?;

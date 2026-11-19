@@ -667,7 +667,8 @@ function openSettings() {
   renderSettingsDialog();
   if (!settingsDialog.open) settingsDialog.showModal();
 }
-window.mardowOpenSettings = openSettings; // called by the native menu (Mardow › Settings…, ⌘,)
+window.mardowOpenSettings = openSettings;
+window.mardowFlush = flush; // called by the desktop app right before it restarts for an update // called by the native menu (Mardow › Settings…, ⌘,)
 
 async function saveSetting(key, value) {
   state.cfg = await api('PUT', '/api/config', { [key]: value });
