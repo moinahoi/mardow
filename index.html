@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mardow</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <aside id="sidebar">
+      <div class="sidebar-resizer" id="sidebar-resizer" role="separator" aria-orientation="vertical" tabindex="0"></div>
+      <div class="side-top drag" data-tauri-drag-region>
+        <button class="icon" data-action="new-folder" id="new-folder"></button>
+        <button class="icon settings-btn" data-action="settings" id="settings-btn"></button>
+      </div>
+      <div class="side-head"><span class="hello">Hello!</span></div>
+      <div id="files" class="open-files" hidden></div>
+      <div class="search-wrap"><input id="search" type="search" autocomplete="off" spellcheck="false" /></div>
+      <nav id="list"></nav>
+      <div class="vault-bar">
+        <button class="vault-path" id="vault-path" data-action="vault-menu"><span><span dir="ltr"></span></span><svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg></button>
+        <button class="icon small" data-action="reveal-vault" id="reveal-btn"></button>
+      </div>
+    </aside>
+    <main id="main">
+      <div class="main-top drag" data-tauri-drag-region></div>
+      <div id="doc" hidden>
+        <input id="title" autocomplete="off" spellcheck="false" />
+        <div id="note-info" class="note-info"></div>
+        <div id="editor" class="md-editor"></div>
+        <div id="code" class="code-view" hidden>
+          <div class="code-head"><span id="code-lang"></span><button class="icon small" data-action="toggle-wrap" id="wrap-btn"></button></div>
+          <div id="code-body"></div>
+        </div>
+        <div id="board" class="board"></div>
+      </div>
+      <div id="empty" class="empty"></div>
+      <div id="welcome" class="empty" hidden></div>
+    </main>
+    <dialog id="settings"></dialog>
+    <dialog id="card"></dialog>
+    <div id="menu" hidden></div>
+    <div id="toast" hidden></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
