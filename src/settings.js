@@ -28,6 +28,8 @@ export const sections = (t) => [
         options: [['system', t.system], ['de', 'Deutsch'], ['en', 'English']] },
       { key: 'sort', label: t.sort, hint: t.sortHint, type: 'select', default: 'recent',
         options: [['recent', t.sortRecent], ['created', t.sortCreated], ['alpha', t.sortAlpha], ['manual', t.sortManual]] },
+      { key: 'archiveDays', label: t.archiveDays, hint: t.archiveDaysHint, type: 'select', default: '30',
+        options: [['0', t.never], ...[7, 30, 90, 365].map((n) => [String(n), t.days(n)])] },
     ],
   },
   {

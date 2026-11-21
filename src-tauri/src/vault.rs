@@ -44,6 +44,9 @@ pub struct Note {
     pub important: bool,
     /// Kanban board (frontmatter `mardow: board`), shown as a board instead of the text editor.
     pub board: bool,
+    /// When the note was archived (ms); archived notes are listed in `Tree::archive` only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub archived: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub snippet: Option<String>,
 }
@@ -75,6 +78,7 @@ pub struct Tree {
     pub folders: Vec<Folder>,
     /// Manual sort order (note paths); notes not listed come after, newest first.
     pub order: Vec<String>,
+    pub archive: Vec<Note>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -85,6 +89,9 @@ struct Meta {
     important: Vec<String>,
     #[serde(default)]
     order: Vec<String>,
+    /// Archived notes: path -> archive time (ms).
+    #[serde(default)]
+    archived: std::collections::BTreeMap<String, f64>,
     #[serde(flatten)]
     rest: serde_json::Map<String, serde_json::Value>, // keep fields we don't know
 }
@@ -179,6 +186,15 @@ fn update_paths(vault: &Path, f: impl Fn(&mut Vec<String>)) -> Result<()> {
         f(&mut m.pinned);
         f(&mut m.important);
         f(&mut m.order);
+        // The archive map is keyed by path: run each key through `f` on its own (dropped = removed).
+        m.archived = std::mem::take(&mut m.archived)
+            .into_iter()
+            .filter_map(|(k, at)| {
+                let mut one = vec![k];
+                f(&mut one);
+                one.pop().map(|k| (k, at))
+            })
+            .collect();
     })
 }
 
@@ -206,6 +222,7 @@ fn list_notes(vault: &Path, folder: &str, flags: &Meta) -> Result<Vec<Note>> {
             pinned: flags.pinned.contains(&rel),
             important: flags.important.contains(&rel),
             board: is_board(&entry.path()),
+            archived: flags.archived.get(&rel).copied(),
             title: name[..name.len() - 3].to_string(),
             path: rel,
             mtime,
@@ -227,7 +244,15 @@ pub fn tree(vault: &Path) -> Result<Tree> {
         }
     }
     folders.sort_by_key(|f| f.name.to_lowercase());
-    Ok(Tree { root: list_notes(vault, "", &meta)?, folders, order: meta.order })
+    let mut root = list_notes(vault, "", &meta)?;
+    let mut archive = Vec::new();
+    for notes in std::iter::once(&mut root).chain(folders.iter_mut().map(|f| &mut f.notes)) {
+        let (gone, kept) = std::mem::take(notes).into_iter().partition(|n| n.archived.is_some());
+        archive.extend(gone);
+        *notes = kept;
+    }
+    archive.sort_by(|a: &Note, b| b.archived.partial_cmp(&a.archived).unwrap());
+    Ok(Tree { root, folders, order: meta.order, archive })
 }
 
 pub fn read_note(vault: &Path, rel: &str) -> Result<String> {
@@ -307,6 +332,34 @@ fn set_flag(vault: &Path, rel: &str, on: bool, list: impl FnOnce(&mut Meta) -> &
             l.push(rel.to_string());
         }
     })
+}
+
+pub fn set_archived(vault: &Path, rel: &str, on: bool) -> Result<()> {
+    resolve_note(vault, rel)?;
+    let now = std::time::SystemTime::now().duration_since(UNIX_EPOCH).map_or(0.0, |d| d.as_millis() as f64);
+    update_meta(vault, |m| {
+        if on {
+            m.archived.insert(rel.to_string(), now);
+        } else {
+            m.archived.remove(rel);
+        }
+    })
+}
+
+/// Moves notes archived more than `days` ago to the Trash (0 = never). Entries whose file is gone are dropped.
+pub fn purge_archive(vault: &Path, days: f64) -> Result<usize> {
+    let now = std::time::SystemTime::now().duration_since(UNIX_EPOCH).map_or(0.0, |d| d.as_millis() as f64);
+    let mut purged = 0;
+    for (rel, at) in read_meta(vault).archived {
+        let Ok(path) = resolve_note(vault, &rel) else { continue };
+        if !path.exists() {
+            update_paths(vault, |p| p.retain(|x| x != &rel))?;
+        } else if days > 0.0 && now - at > days * 864e5 {
+            delete_note(vault, &rel)?;
+            purged += 1;
+        }
+    }
+    Ok(purged)
 }
 
 pub fn create_folder(vault: &Path, name: &str) -> Result<String> {
@@ -417,6 +470,19 @@ mod tests {
         assert!(tree(&vault).unwrap().root.iter().any(|n| n.path == board && n.board));
         assert!(search(&vault, "mardow").unwrap().is_empty(), "frontmatter is not searchable");
         assert_eq!(search(&vault, "karte").unwrap().len(), 1);
+
+        // Archive: hidden from the tree, follows renames, purged after the given days.
+        let old = create_note(&vault, "", "Alt").unwrap();
+        set_archived(&vault, &old, true).unwrap();
+        let t = tree(&vault).unwrap();
+        assert!(t.archive.iter().any(|n| n.path == old) && !t.root.iter().any(|n| n.path == old));
+        let old = rename_note(&vault, &old, "Alt2").unwrap();
+        assert_eq!(tree(&vault).unwrap().archive.iter().filter(|n| n.path == old).count(), 1);
+        assert_eq!(purge_archive(&vault, 1.0).unwrap(), 0);
+        assert_eq!(purge_archive(&vault, 0.0).unwrap(), 0, "0 = never");
+        update_meta(&vault, |m| { m.archived.insert(old.clone(), 1.0); }).unwrap();
+        assert_eq!(purge_archive(&vault, 1.0).unwrap(), 1);
+        assert!(tree(&vault).unwrap().archive.is_empty());
 
         for bad_path in ["../x.md", "/etc/passwd.md", "a/b/c.md", ".hidden.md", "x.txt", ""] {
             assert!(resolve_note(&vault, bad_path).is_err(), "{bad_path}");

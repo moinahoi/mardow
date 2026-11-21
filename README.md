@@ -99,13 +99,27 @@ Notizordner/
 
 ## Release veröffentlichen
 
+Im Terminal im Projektordner:
+
 ```bash
-npm run release -- 0.2.0
+npm run release
 ```
 
-[scripts/release.sh](scripts/release.sh) setzt die Version (package.json, tauri.conf.json, Cargo.toml), führt `npm test` und `npm run dist` aus und packt `Mardow.app` als `Mardow-<version>-macos-<arch>.zip`. Danach entstehen der Commit „Release v<version>“ und der Tag `v<version>`. Beide werden nach `origin` gepusht. Zum Schluss legt das Skript ein GitHub-Release an, mit automatisch erzeugten Release-Notes und drei Anhängen: der ZIP-Datei, dem signierten Update-Archiv `Mardow-<version>-macos-<arch>.app.tar.gz` und `latest.json`.
+Das Skript zeigt, was rausgeht (neue Version, offene Änderungen, Commits seit dem letzten Release), fragt nach einer Commit-Nachricht für offene Änderungen und nach einer Bestätigung. Danach läuft alles von selbst.
 
-Voraussetzungen: ein sauberer Git-Arbeitsstand, ein `origin`-Remote auf GitHub, ein angemeldetes `gh` (`gh auth login`) und der Update-Schlüssel `~/.tauri/mardow.key`. Das Skript prüft alles vorher und bricht ab, bevor es eine Datei ändert.
+| Aufruf | Wirkung |
+|---|---|
+| `npm run release` | nächste Patch-Version, z. B. 0.2.2 → 0.2.3 |
+| `npm run release -- minor` | 0.2.2 → 0.3.0 (auch `major` oder eine genaue Version wie `1.0.0`) |
+| `npm run release -- -m "Text"` | Commit-Nachricht für offene Änderungen, ohne Nachfrage |
+| `npm run release -- --dry-run` | nur prüfen und anzeigen, nichts ändern |
+| `npm run release -- -y` | ohne Bestätigungsfrage |
+
+Optionen stehen immer hinter `--`, sonst nimmt npm sie selbst.
+
+[scripts/release.sh](scripts/release.sh) committet zuerst offene Änderungen mit deiner Nachricht. Dann setzt es die Version (package.json, tauri.conf.json, Cargo.toml), führt `npm test` und `npm run dist` aus und packt `Mardow.app` als `Mardow-<version>-macos-<arch>.zip`. Danach entstehen der Commit „Release v<version>“ und der Tag `v<version>`. Beide werden nach `origin` gepusht. Zum Schluss legt das Skript ein GitHub-Release an, mit automatisch erzeugten Release-Notes und drei Anhängen: der ZIP-Datei, dem signierten Update-Archiv `Mardow-<version>-macos-<arch>.app.tar.gz` und `latest.json`. Am Ende wartet es, bis der öffentliche Update-Feed die neue Version meldet. Ab dann bieten installierte Mardow-Versionen das Update beim nächsten Start an.
+
+Voraussetzungen: ein `origin`-Remote auf GitHub, ein angemeldetes `gh` (`gh auth login`) und der Update-Schlüssel `~/.tauri/mardow.key`. Das Skript prüft alles vorher und bricht ab, bevor es eine Datei ändert. Eine Version, die älter als die aktuelle ist, lehnt es ab.
 
 Die App ist nur behelfsmäßig signiert und nicht notarisiert. Auf einem anderen Mac blockiert Gatekeeper sie nach dem Download zunächst: Rechtsklick › Öffnen, oder `xattr -dr com.apple.quarantine Mardow.app`.
 

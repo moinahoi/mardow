@@ -213,6 +213,8 @@ struct Body {
     new_name: String,
     pinned: bool,
     important: bool,
+    archived: bool,
+    days: f64,
     order: Vec<String>,
 }
 
@@ -382,6 +384,15 @@ async fn important_note(State(s): St, Json(b): Json<Body>) -> R {
     ok()
 }
 
+async fn archive_note(State(s): St, Json(b): Json<Body>) -> R {
+    vault::set_archived(&s.vault()?, &b.path, b.archived)?;
+    ok()
+}
+
+async fn purge_archive(State(s): St, Json(b): Json<Body>) -> R {
+    Ok(Json(json!({ "purged": vault::purge_archive(&s.vault()?, b.days)? })))
+}
+
 async fn move_note(State(s): St, Json(b): Json<Body>) -> R {
     Ok(Json(json!({ "path": vault::move_note(&s.vault()?, &b.path, &b.folder)? })))
 }
@@ -509,6 +520,8 @@ pub async fn serve(
         .route("/api/note/rename", post(rename_note))
         .route("/api/note/pin", post(pin_note))
         .route("/api/note/important", post(important_note))
+        .route("/api/note/archive", post(archive_note))
+        .route("/api/archive/purge", post(purge_archive))
         .route("/api/note/move", post(move_note))
         .route("/api/order", post(set_order))
         .route("/api/folder", post(create_folder).delete(delete_folder))

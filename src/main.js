@@ -34,6 +34,7 @@ const icon = {
   close: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
   finder: '<svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-8 8"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></svg>',
   folderPlus: '<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M12 11v5M9.5 13.5h5"/></svg>',
+  archive: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4"/></svg>',
   star: '<svg viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9Z"/></svg>',
   board: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 4v16"/></svg>',
   wrap: '<svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h13a3 3 0 0 1 0 6h-4M4 18h5"/><path d="m15 16-2 2 2 2"/></svg>',
@@ -43,7 +44,8 @@ const icon = {
 
 const state = {
   cfg: {},
-  tree: { root: [], folders: [], order: [] },
+  tree: { root: [], folders: [], order: [], archive: [] },
+  archiveOpen: false,
   current: null, // relative path of the open note
   file: null, // absolute path of an open single file (outside any notes folder); excludes `current`
   activeFolder: '', // where "new note" goes
@@ -530,6 +532,12 @@ async function onExternalChange() {
 }
 
 // ---------- Sidebar ----------
+// Archived notes older than the set number of days go to the Trash; runs when a notes folder is opened and when the setting changes.
+async function purgeArchive() {
+  const days = Number(state.cfg.archiveDays ?? 30);
+  if (days > 0 && (await api('POST', '/api/archive/purge', { days })).purged) await loadTree();
+}
+
 async function loadTree() {
   state.tree = await api('GET', '/api/tree');
   renderList();
@@ -568,7 +576,7 @@ function sorted(notes) {
 }
 
 function noteRow(n, snippet) {
-  return `<div class="note ${n.path === state.current ? 'active' : ''} ${n.important ? 'important' : ''}" data-action="open" data-path="${esc(n.path)}" draggable="${!snippet && !state.query}">
+  return `<div class="note ${n.path === state.current ? 'active' : ''} ${n.important ? 'important' : ''}" data-action="open" data-path="${esc(n.path)}" draggable="${!snippet && !state.query && !n.archived}">
     <span class="note-title">${n.pinned ? `<i class="pin">${icon.pin}</i>` : ''}${n.board ? `<i class="kind">${icon.board}</i>` : ''}${esc(n.title)}</span>
     ${snippet ? `<span class="snippet">${esc(snippet)}</span>` : ''}
     <button class="icon small" data-action="note-menu" data-path="${esc(n.path)}">${icon.more}</button>
@@ -604,6 +612,18 @@ function importantBlock() {
     ${open ? `<div class="notes" data-important>${sorted(notes).map((n) => noteRow(n)).join('')}</div>` : ''}
   </section>`;
 }
+// Archive: collapsed, last in the list, only there when something is archived.
+function archiveBlock() {
+  const notes = state.tree.archive;
+  if (!notes.length) return '';
+  return `<section class="folder archive-section ${state.archiveOpen ? 'open' : ''}">
+    <div class="folder-head" data-action="toggle" data-folder="${ARCHIVE}">
+      <i class="chev">${icon.chevron}</i><i class="kind">${icon.archive}</i><span class="folder-name">${esc(t.archive)}</span><span class="count">${notes.length}</span>
+    </div>
+    ${state.archiveOpen ? `<div class="notes" data-archive>${notes.map((n) => noteRow(n)).join('')}</div>` : ''}
+  </section>`;
+}
+const ARCHIVE = '/archive';
 const IMPORTANT = '/important'; // section key; folder names can't contain "/" 
 
 function renderFiles() {
@@ -627,7 +647,7 @@ function renderList() {
       : `<p class="muted">${esc(t.noResults)}</p>`;
     return;
   }
-  list.innerHTML = importantBlock() + folderBlock('', state.tree.root) + state.tree.folders.map((f) => folderBlock(f.name, f.notes)).join('');
+  list.innerHTML = importantBlock() + folderBlock('', state.tree.root) + state.tree.folders.map((f) => folderBlock(f.name, f.notes)).join('') + archiveBlock();
   const input = list.querySelector('.rename');
   if (input) { input.focus(); input.select(); }
 }
@@ -672,10 +692,13 @@ const closeMenu = () => ($('#menu').hidden = true);
 const item = (action, label, data = '', cls = '') => `<button class="item ${cls}" data-action="${action}" ${data}>${esc(label)}</button>`;
 
 function noteMenu(anchor, path) {
-  const note = allNotes().find((n) => n.path === path);
   const data = `data-path="${esc(path)}"`;
+  if (state.tree.archive.some((n) => n.path === path)) {
+    return openMenu(anchor, item('unarchive', t.unarchive, data) + '<hr>' + item('delete-note', t.delete, data, 'danger'));
+  }
+  const note = allNotes().find((n) => n.path === path);
   openMenu(anchor, item('pin', note?.pinned ? t.unpin : t.pin, data) + item('important', note?.important ? t.unmarkImportant : t.markImportant, data)
-    + '<hr>' + item('delete-note', t.delete, data, 'danger'));
+    + item('archive', t.archiveNote, data) + '<hr>' + item('delete-note', t.delete, data, 'danger'));
 }
 
 function folderMenu(anchor, name) {
@@ -703,6 +726,7 @@ async function saveSetting(key, value) {
   state.cfg = await api('PUT', '/api/config', { [key]: value });
   if (key === 'lang') applyLang();
   if (key === 'theme') applyTheme();
+  if (key === 'archiveDays') purgeArchive().catch(toast);
   renderList();
   renderInfo();
   if (settingsDialog.open) renderSettingsDialog();
@@ -784,6 +808,7 @@ const actions = {
   open: (el) => openNote(el.dataset.path),
   toggle: (el) => {
     const f = el.dataset.folder;
+    if (f === ARCHIVE) { state.archiveOpen = !state.archiveOpen; return renderList(); }
     if (f !== IMPORTANT) state.activeFolder = f;
     state.collapsed.has(f) ? state.collapsed.delete(f) : state.collapsed.add(f);
     renderList();
@@ -803,6 +828,16 @@ const actions = {
   important: async (el) => {
     const note = allNotes().find((n) => n.path === el.dataset.path);
     await api('POST', '/api/note/important', { path: el.dataset.path, important: !note?.important });
+    await loadTree();
+  },
+  archive: async (el) => {
+    await flush();
+    await api('POST', '/api/note/archive', { path: el.dataset.path, archived: true });
+    if (el.dataset.path === state.current) await closeNote();
+    await loadTree();
+  },
+  unarchive: async (el) => {
+    await api('POST', '/api/note/archive', { path: el.dataset.path, archived: false });
     await loadTree();
   },
   'delete-note': async (el) => {
@@ -1148,6 +1183,8 @@ async function switchVault(cfg) {
   $('#vault-path').title = cfg.vault ?? '';
   $('#vault-path [dir]').textContent = (cfg.vault ?? '').replace(/^\/Users\/[^/]+(?=\/|$)/, '~');
   if (!ready) return;
+  state.archiveOpen = false;
+  await purgeArchive().catch(toast);
   await loadTree();
   const last = cfg.lastNotes?.[cfg.vault];
   if (last && allNotes().some((n) => n.path === last)) await openNote(last);

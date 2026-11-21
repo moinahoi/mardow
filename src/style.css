@@ -503,3 +503,10 @@ body.cmd-down .milkdown .ProseMirror a { cursor: pointer; }
 .milkdown li .label-wrapper ::selection, .milkdown li .label-wrapper::selection { background: transparent; }
 /* Page chrome never joins a text selection (⌘A, dragging across): only the note's content does. */
 #sidebar, .note-info, .main-top, .code-head { -webkit-user-select: none; user-select: none; }
+
+/* Archive: quiet, muted section at the bottom of the list */
+.archive-section > .folder-head { color: var(--muted); }
+.archive-section .kind { display: grid; }
+.archive-section .kind svg { width: 13px; height: 13px; }
+.archive-section .note { opacity: 0.75; }
+.notes[data-archive] { display: flex; flex-direction: column; gap: 2px; }
